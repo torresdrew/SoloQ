@@ -1,0 +1,16 @@
+## Interface: 120005, 120007
+## Title: SoloQ
+## Notes: Builds Mythic+ applicant groups from role, score, lust/heroism, and battle res requirements.
+## Author: DrewSIT2010
+## Version: @project-version@
+## X-Curse-Project-ID: 1562851
+## X-Flavor: Retail
+## SavedVariables: SoloQSettings
+## Category-enUS: Dungeons & Raids
+
+Debug.lua
+Rules.lua
+Listing.lua
+Applicants.lua
+UI.lua
+Init.lua

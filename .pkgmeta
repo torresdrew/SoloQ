@@ -1,0 +1,13 @@
+package-as: SoloQ
+
+enable-nolib-creation: no
+
+# Dev-only files kept out of the published addon zip.
+ignore:
+    - .gitignore
+    - .pkgmeta
+    - docs
+    - tests
+    - tools
+    - scripts
+    - dist
