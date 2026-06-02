@@ -7,8 +7,9 @@ on:
     tags:
       - 'v*'
 
+# contents: write lets the packager also publish a GitHub release with the zip.
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   release:
@@ -26,3 +27,5 @@ jobs:
         env:
           # Add this in: repo Settings -> Secrets and variables -> Actions.
           CF_API_KEY: ${{ secrets.CF_API_KEY }}
+          # Provided automatically by Actions; used to create the GitHub release.
+          GITHUB_OAUTH: ${{ secrets.GITHUB_TOKEN }}

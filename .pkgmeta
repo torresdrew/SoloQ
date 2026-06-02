@@ -2,6 +2,12 @@ package-as: SoloQ
 
 enable-nolib-creation: no
 
+# Use the hand-written changelog for the CurseForge/GitHub release notes
+# instead of an auto-generated commit log.
+manual-changelog:
+    filename: CHANGELOG.md
+    markup-type: markdown
+
 # Dev-only files kept out of the published addon zip.
 ignore:
     - .gitignore
