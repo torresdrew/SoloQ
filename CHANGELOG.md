@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.2.0
 
 - Hid the rat applicant-list overlay while applicant evaluation is disabled.
 - Added an always-on rat overlay that covers Blizzard's applicant list while SoloQ is active in the Mythic+ applicant viewer.
