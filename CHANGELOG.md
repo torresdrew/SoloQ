@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Hid the rat applicant-list overlay while applicant evaluation is disabled.
+- Added an always-on rat overlay that covers Blizzard's applicant list while SoloQ is active in the Mythic+ applicant viewer.
+- Added a panel checkbox and dropdown for playing a selected ready sound when a complete proposed group becomes available.
+
 ## v0.1.0
 
 First release.

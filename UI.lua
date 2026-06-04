@@ -5,21 +5,30 @@ local UI = {}
 SQ.UI = UI
 
 local PANEL_WIDTH = 260
-local PANEL_HEIGHT = 378
+local PANEL_HEIGHT = 432
 local LINE_HEIGHT = 14
 local BUTTON_HEIGHT = 22
 local MIN_SCORE_Y = -70
 local COMPOSITION_BLOODLUST_Y = -106
 local COMPOSITION_BATTLE_RES_Y = -130
-local GROUP_HEADER_Y = -160
-local GROUP_SLOT_START_Y = -178
+local READY_SOUND_CHECK_Y = -154
+local READY_SOUND_DROPDOWN_Y = -178
+local GROUP_HEADER_Y = -214
+local GROUP_SLOT_START_Y = -232
 local GROUP_SLOT_SPACING = 16
-local INVITE_GROUP_BUTTON_Y = -266
-local PENDING_Y = -298
-local ACTION_BUTTON_Y = -322
+local INVITE_GROUP_BUTTON_Y = -320
+local PENDING_Y = -352
+local ACTION_BUTTON_Y = -376
 local LIST_KEY_ICON = "Interface\\AddOns\\SoloQ\\assets\\hero_rat.tga"
 local LIST_KEY_BUTTON_WIDTH = 200
 local LIST_KEY_BUTTON_HEIGHT = 32
+local APPLICANT_COVER_NAME = "SoloQApplicantCover"
+local APPLICANT_COVER_BACKGROUND_ALPHA = 0.92
+local APPLICANT_COVER_ICON_WIDTH = 220
+local APPLICANT_COVER_ICON_HEIGHT = 188
+local READY_SOUND_DEFAULT_KEY = "READY_CHECK"
+local READY_SOUND_DROPDOWN_NAME = "SoloQReadySoundDropdown"
+local READY_SOUND_DROPDOWN_WIDTH = 170
 -- Icon kept at the art's ~1.17:1 aspect (626x535) so it is not squished.
 local LIST_KEY_ICON_WIDTH = 30
 local LIST_KEY_ICON_HEIGHT = 26
@@ -28,13 +37,22 @@ local ROLE_LABELS = {
     HEALER = "Healer",
     DAMAGER = "DPS",
 }
+local READY_SOUND_OPTIONS = {
+    { key = "READY_CHECK", label = "Ready Check", soundKit = "READY_CHECK" },
+    { key = "RAID_WARNING", label = "Raid Warning", soundKit = "RAID_WARNING" },
+    { key = "AUCTION_BELL", label = "Auction Bell", soundKit = "AUCTION_WINDOW_OPEN" },
+    { key = "TELL_MESSAGE", label = "Tell Message", soundKit = "TELL_MESSAGE" },
+}
 
 local panel
 local controls = {}
+local applicantCover
+local updateApplicantCoverVisibility
 local initialized = false
 local hookedGlobals = {}
 local frameScriptsHooked = false
 local forcedVisible = false
+local readySoundWasComplete = false
 
 local function getCompositionSettings()
     SoloQSettings.composition = SoloQSettings.composition or {}
@@ -45,6 +63,59 @@ local function getCompositionSettings()
         SoloQSettings.composition.requireBattleRes = false
     end
     return SoloQSettings.composition
+end
+
+local function getReadySoundOption(key)
+    for _, option in ipairs(READY_SOUND_OPTIONS) do
+        if option.key == key then
+            return option
+        end
+    end
+    return nil
+end
+
+local function getNotificationSettings()
+    SoloQSettings.notifications = SoloQSettings.notifications or {}
+    if SoloQSettings.notifications.playReadySound == nil then
+        SoloQSettings.notifications.playReadySound = false
+    end
+    if not getReadySoundOption(SoloQSettings.notifications.readySound) then
+        SoloQSettings.notifications.readySound = READY_SOUND_DEFAULT_KEY
+    end
+    return SoloQSettings.notifications
+end
+
+local function isCompleteProposal(proposal)
+    return (proposal and proposal.complete and proposal.invitees and #proposal.invitees > 0) and true or false
+end
+
+local function playReadySoundIfNeeded(proposal)
+    local isComplete = isCompleteProposal(proposal)
+    if not isComplete then
+        readySoundWasComplete = false
+        return
+    end
+
+    if readySoundWasComplete then
+        return
+    end
+
+    readySoundWasComplete = true
+
+    local notifications = getNotificationSettings()
+    if not notifications.playReadySound then
+        return
+    end
+
+    local option = getReadySoundOption(notifications.readySound)
+    if not option or not option.soundKit or type(PlaySound) ~= "function" or type(SOUNDKIT) ~= "table" then
+        return
+    end
+
+    local sound = SOUNDKIT[option.soundKit]
+    if sound ~= nil then
+        PlaySound(sound, "Master")
+    end
 end
 
 local function setText(fontString, text)
@@ -80,6 +151,86 @@ local function createCheck(parent, x, y, onClick)
         onClick(self:GetChecked())
     end)
     return check
+end
+
+local function findOption(options, key)
+    for _, option in ipairs(options) do
+        if option.key == key then
+            return option
+        end
+    end
+    return nil
+end
+
+local function setDropdownSelected(dropdown, option)
+    if not dropdown or not option then
+        return
+    end
+    dropdown.selectedKey = option.key
+    dropdown.text = option.label
+    if UIDropDownMenu_SetText then
+        UIDropDownMenu_SetText(dropdown, option.label)
+    elseif dropdown.SetText then
+        dropdown:SetText(option.label)
+    end
+end
+
+local function setDropdownEnabled(dropdown, enabled)
+    if not dropdown then
+        return
+    end
+    dropdown.enabled = enabled and true or false
+    if dropdown.enabled then
+        if UIDropDownMenu_EnableDropDown then
+            UIDropDownMenu_EnableDropDown(dropdown)
+        elseif dropdown.SetEnabled then
+            dropdown:SetEnabled(true)
+        end
+    else
+        if UIDropDownMenu_DisableDropDown then
+            UIDropDownMenu_DisableDropDown(dropdown)
+        elseif dropdown.SetEnabled then
+            dropdown:SetEnabled(false)
+        end
+    end
+end
+
+local function createDropdown(parent, name, x, y, width, options, onSelect)
+    local dropdown = CreateFrame("Frame", name, parent, "UIDropDownMenuTemplate")
+    dropdown:SetPoint("TOPLEFT", parent, "TOPLEFT", x, y)
+    dropdown.options = options
+    if dropdown.SetSize then
+        dropdown:SetSize(width, BUTTON_HEIGHT)
+    end
+    if UIDropDownMenu_SetWidth then
+        UIDropDownMenu_SetWidth(dropdown, width)
+    elseif dropdown.SetWidth then
+        dropdown:SetWidth(width)
+    end
+
+    function dropdown:SelectValue(key)
+        local option = findOption(options, key) or findOption(options, READY_SOUND_DEFAULT_KEY)
+        onSelect(option.key)
+        setDropdownSelected(self, option)
+    end
+
+    if UIDropDownMenu_Initialize and UIDropDownMenu_CreateInfo and UIDropDownMenu_AddButton then
+        UIDropDownMenu_Initialize(dropdown, function()
+            for _, option in ipairs(options) do
+                local key = option.key
+                local info = UIDropDownMenu_CreateInfo()
+                info.text = option.label
+                info.value = key
+                info.checked = dropdown.selectedKey == key
+                info.func = function()
+                    dropdown:SelectValue(key)
+                end
+                UIDropDownMenu_AddButton(info)
+            end
+        end)
+    end
+
+    return dropdown
 end
 
 local function createButton(parent, text, x, y, width, onClick)
@@ -119,6 +270,56 @@ local function attachLeftIcon(button, texturePath, width, height)
     end
 
     return icon
+end
+
+local function getApplicantViewer()
+    return LFGListFrame and LFGListFrame.ApplicationViewer or nil
+end
+
+local function getApplicantCoverAnchor(viewer)
+    if not viewer then
+        return nil
+    end
+    return viewer.ScrollFrame or viewer.ScrollBox or viewer
+end
+
+local function createApplicantCover()
+    if applicantCover then
+        return applicantCover
+    end
+
+    local viewer = getApplicantViewer()
+    local anchor = getApplicantCoverAnchor(viewer)
+    if not viewer or not anchor or not CreateFrame then
+        return nil
+    end
+
+    applicantCover = CreateFrame("Frame", APPLICANT_COVER_NAME, viewer)
+    applicantCover:SetAllPoints(anchor)
+    applicantCover:SetFrameStrata("FULLSCREEN")
+    if applicantCover.SetFrameLevel then
+        local anchorLevel = anchor.GetFrameLevel and anchor:GetFrameLevel() or 1
+        applicantCover:SetFrameLevel(anchorLevel + 20)
+    end
+    applicantCover:EnableMouse(true)
+
+    local background = applicantCover:CreateTexture(nil, "BACKGROUND")
+    background:SetAllPoints(applicantCover)
+    if background.SetColorTexture then
+        background:SetColorTexture(0, 0, 0, APPLICANT_COVER_BACKGROUND_ALPHA)
+    else
+        background:SetTexture(0, 0, 0, APPLICANT_COVER_BACKGROUND_ALPHA)
+    end
+    applicantCover.background = background
+
+    local icon = applicantCover:CreateTexture(nil, "ARTWORK")
+    icon:SetTexture(LIST_KEY_ICON)
+    icon:SetSize(APPLICANT_COVER_ICON_WIDTH, APPLICANT_COVER_ICON_HEIGHT)
+    icon:SetPoint("CENTER", applicantCover, "CENTER", 0, 0)
+    applicantCover.icon = icon
+
+    applicantCover:Hide()
+    return applicantCover
 end
 
 local function hookIfExists(name, handler)
@@ -166,6 +367,19 @@ function UI.SetRequireBattleRes(enabled)
     SQ.SetStatus("Updated battle res requirement.")
 end
 
+function UI.SetPlayReadySound(enabled)
+    getNotificationSettings().playReadySound = enabled and true or false
+    setDropdownEnabled(controls.readySoundDropdown, getNotificationSettings().playReadySound)
+    SQ.SetStatus("Updated ready sound notification.")
+end
+
+function UI.SetReadySound(key)
+    local option = getReadySoundOption(key) or getReadySoundOption(READY_SOUND_DEFAULT_KEY)
+    getNotificationSettings().readySound = option.key
+    setDropdownSelected(controls.readySoundDropdown, option)
+    SQ.SetStatus("Updated ready sound.")
+end
+
 function UI.Refresh()
     if controls.enabled then
         controls.enabled:SetChecked(SoloQSettings.enabled)
@@ -181,6 +395,18 @@ function UI.Refresh()
     end
     if controls.requireBattleRes then
         controls.requireBattleRes:SetChecked(composition.requireBattleRes)
+    end
+
+    local notifications = getNotificationSettings()
+    if controls.playReadySound then
+        controls.playReadySound:SetChecked(notifications.playReadySound)
+    end
+    if controls.readySoundDropdown then
+        setDropdownSelected(controls.readySoundDropdown, getReadySoundOption(notifications.readySound))
+        setDropdownEnabled(controls.readySoundDropdown, notifications.playReadySound)
+    end
+    if updateApplicantCoverVisibility then
+        updateApplicantCoverVisibility()
     end
 
     UI.UpdatePendingAction()
@@ -220,6 +446,7 @@ end
 function UI.UpdatePendingAction()
     local pending = SQ.Applicants and SQ.Applicants.GetPendingAction and SQ.Applicants.GetPendingAction() or nil
     local proposal = SQ.Applicants and SQ.Applicants.GetProposedGroup and SQ.Applicants.GetProposedGroup() or nil
+    playReadySoundIfNeeded(proposal)
 
     if controls.group then
         local count = proposal and proposal.invitees and #proposal.invitees or 0
@@ -273,6 +500,29 @@ function UI.ShouldShowPanel()
     return context and context.hasActiveEntry and context.isLeader and context.isMythicPlus or false
 end
 
+local function shouldShowApplicantCover()
+    if not LFGListFrame or not LFGListFrame.ApplicationViewer or LFGListFrame.activePanel ~= LFGListFrame.ApplicationViewer then
+        return false
+    end
+    if not SoloQSettings or not SoloQSettings.enabled then
+        return false
+    end
+    local context = SQ.Applicants and SQ.Applicants.GetContext and SQ.Applicants.GetContext()
+    return context and context.hasActiveEntry and context.isLeader and context.isMythicPlus or false
+end
+
+function updateApplicantCoverVisibility()
+    local cover = createApplicantCover()
+    if not cover then
+        return
+    end
+    if shouldShowApplicantCover() then
+        cover:Show()
+    else
+        cover:Hide()
+    end
+end
+
 function UI.UpdateVisibility()
     if not panel then
         return
@@ -283,6 +533,7 @@ function UI.UpdateVisibility()
     else
         panel:Hide()
     end
+    updateApplicantCoverVisibility()
 end
 
 function UI.Toggle()
@@ -304,6 +555,7 @@ local function createPanel()
     controls.enabled = createCheck(panel, 10, -34, function(checked)
         SoloQSettings.enabled = checked and true or false
         SQ.SetStatus("Applicant evaluation " .. (SoloQSettings.enabled and "enabled." or "disabled."))
+        updateApplicantCoverVisibility()
     end)
     createLabel(panel, "Enable applicant evaluation", 38, -39)
 
@@ -321,6 +573,15 @@ local function createPanel()
         UI.SetRequireBattleRes(checked)
     end)
     createLabel(panel, "Require battle res", 38, COMPOSITION_BATTLE_RES_Y - 5)
+
+    controls.playReadySound = createCheck(panel, 10, READY_SOUND_CHECK_Y, function(checked)
+        UI.SetPlayReadySound(checked)
+    end)
+    createLabel(panel, "Play ready sound", 38, READY_SOUND_CHECK_Y - 5)
+
+    controls.readySoundDropdown = createDropdown(panel, READY_SOUND_DROPDOWN_NAME, 32, READY_SOUND_DROPDOWN_Y, READY_SOUND_DROPDOWN_WIDTH, READY_SOUND_OPTIONS, function(key)
+        UI.SetReadySound(key)
+    end)
 
     controls.group = panel:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
     controls.group:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, GROUP_HEADER_Y)
@@ -405,6 +666,7 @@ function UI.Init()
     end
 
     createGroupFinderButton()
+    createApplicantCover()
 
     hookIfExists("LFGListFrame_SetActivePanel", UI.UpdateVisibility)
     hookIfExists("PVEFrame_ShowFrame", UI.UpdateVisibility)

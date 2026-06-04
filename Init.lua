@@ -12,6 +12,10 @@ SQ.DEFAULT_SETTINGS = {
         requireBloodlust = false,
         requireBattleRes = false,
     },
+    notifications = {
+        playReadySound = false,
+        readySound = "READY_CHECK",
+    },
 }
 
 local function copyDefaults(defaults)

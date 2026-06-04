@@ -18,6 +18,10 @@ all from your existing listing.
 - **Proposed group builder** — fills a full 5-player comp (one tank, one healer, three
   DPS) around your own role and anyone already in your party. *Invite Group* lights up
   once a complete, passing group is ready.
+- **Ready sound alert** — optionally play a selected sound when a complete proposed
+  group first becomes ready.
+- **Applicant list cover** — the rat overlay covers Blizzard's applicant list while
+  SoloQ is active in your Mythic+ applicant viewer.
 - **Composition requirements** — optionally require **Bloodlust/Heroism** and a
   **Battle Res** in the proposed group.
 - **Group applicants** — queued duos/trios are included when every member passes.
